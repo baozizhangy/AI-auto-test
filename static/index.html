@@ -1,0 +1,662 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>UI Automation Dashboard</title>
+<style>
+  :root {
+    --bg: #0f0f1a;
+    --card: #1a1a2e;
+    --border: #2a2a3e;
+    --text: #e0e0e0;
+    --muted: #8888aa;
+    --accent: #5b8def;
+    --pass: #00c853;
+    --fail: #ff1744;
+    --warn: #ff9100;
+    --running: #448aff;
+    --web: #0f9d58;
+    --radius: 8px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    height: 100vh;
+    display: grid;
+    grid-template-rows: 56px 1fr 1fr;
+    grid-template-columns: 340px 1fr;
+    gap: 12px;
+    padding: 12px;
+  }
+
+  .header {
+    grid-column: 1 / -1;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 0 20px;
+  }
+  .header h1 { font-size: 18px; font-weight: 600; }
+
+  .status-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; margin-right: 6px; }
+  .status-dot.idle { background: var(--muted); }
+  .status-dot.running { background: var(--running); animation: pulse 1.2s infinite; }
+  .status-dot.ok { background: var(--pass); }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
+
+  /* ── Tabs ─────────────────────────── */
+  .tabs { display: flex; gap: 0; margin-bottom: 6px; }
+  .tab-btn {
+    flex: 1; padding: 8px 0; border: 1px solid var(--border);
+    background: var(--bg); color: var(--muted); font-size: 14px;
+    cursor: pointer; text-align: center; transition: all 0.2s;
+  }
+  .tab-btn:first-child { border-radius: 6px 0 0 6px; }
+  .tab-btn:last-child { border-radius: 0 6px 6px 0; }
+  .tab-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+  .tab-btn.web.active { background: var(--web); border-color: var(--web); }
+
+  /* ── Left Panel ──────────────────── */
+  .left-panel {
+    grid-row: 2 / 4;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 16px;
+    display: flex; flex-direction: column; gap: 14px;
+    overflow-y: auto;
+  }
+  .section-title {
+    font-size: 12px; text-transform: uppercase;
+    letter-spacing: 0.5px; color: var(--muted); margin-bottom: 2px;
+  }
+  label { font-size: 13px; color: var(--muted); display: block; margin-bottom: 4px; }
+  select, input {
+    width: 100%; padding: 8px 10px; border-radius: 6px;
+    border: 1px solid var(--border); background: var(--bg);
+    color: var(--text); font-size: 13px;
+  }
+  select:focus, input:focus { outline: none; border-color: var(--accent); }
+  .config-row { display: flex; gap: 8px; align-items: center; }
+  .config-row input[type="checkbox"] { width: auto; accent-color: var(--accent); }
+  .config-row label { margin-bottom: 0; white-space: nowrap; }
+
+  .btn-run {
+    width: 100%; padding: 10px; border: none; border-radius: 6px;
+    font-size: 15px; font-weight: 600; cursor: pointer;
+    color: #fff; background: var(--accent); transition: background 0.2s;
+  }
+  .btn-run:hover { background: #4a7de0; }
+  .btn-run:disabled { background: #333; cursor: not-allowed; color: #777; }
+
+  .history-list { list-style: none; font-size: 12px; }
+  .history-list li {
+    padding: 6px 8px; border-radius: 4px; cursor: pointer;
+    display: flex; justify-content: space-between; align-items: center;
+  }
+  .history-list li:hover { background: rgba(255,255,255,0.05); }
+  .history-list .h-pass { color: var(--pass); font-weight: 600; }
+  .history-list .h-fail { color: var(--fail); font-weight: 600; }
+  .history-list .btn-del {
+    background: none; border: none; color: var(--muted); cursor: pointer;
+    font-size: 14px; padding: 0 4px; line-height: 1; margin-left: 6px;
+    flex-shrink: 0; transition: color 0.2s;
+  }
+  .history-list .btn-del:hover { color: var(--fail); }
+
+  /* ── Right Panel ─────────────────── */
+  .right-panel {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 16px;
+    display: flex; flex-direction: column; overflow-y: auto;
+  }
+  .step-item {
+    display: flex; align-items: flex-start; gap: 10px;
+    padding: 10px 12px; border-radius: 6px; margin-bottom: 4px;
+    border: 1px solid transparent; transition: background 0.3s, border-color 0.3s;
+  }
+  .step-item.pending { opacity: 0.5; }
+  .step-item.running { background: rgba(68,138,255,0.1); border-color: var(--running); }
+  .step-item.pass { background: rgba(0,200,83,0.08); }
+  .step-item.fail { background: rgba(255,23,68,0.08); }
+  .step-icon {
+    width: 24px; height: 24px; border-radius: 50%; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center; font-size: 12px; margin-top: 1px;
+  }
+  .step-item.pending .step-icon { background: #333; color: #888; }
+  .step-item.running .step-icon { background: var(--running); color: #fff; animation: pulse 1.2s infinite; }
+  .step-item.pass .step-icon { background: var(--pass); color: #fff; }
+  .step-item.fail .step-icon { background: var(--fail); color: #fff; }
+  .step-info { flex: 1; min-width: 0; }
+  .step-name { font-size: 14px; font-weight: 500; }
+  .step-meta { font-size: 12px; color: var(--muted); margin-top: 2px; }
+  .step-detail { display: none; margin-top: 8px; font-size: 13px; }
+  .step-item.pass .step-detail, .step-item.fail .step-detail { display: block; }
+  .step-detail img { max-width: 200px; border-radius: 4px; border: 1px solid var(--border); margin-top: 4px; cursor: pointer; }
+  .step-shots { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 6px; }
+  .step-shot { display: flex; flex-direction: column; align-items: center; }
+  .step-shot-label { font-size: 11px; color: var(--muted); margin-bottom: 2px; }
+  .step-shot img { max-width: 180px; max-height: 320px; border-radius: 4px; border: 1px solid var(--border); cursor: pointer; }
+  .confidence-bar { height: 4px; border-radius: 2px; background: #333; margin-top: 4px; width: 100px; }
+  .confidence-bar-inner { height: 100%; border-radius: 2px; }
+  .confidence-bar-inner.high { background: var(--pass); }
+  .confidence-bar-inner.med { background: var(--warn); }
+  .confidence-bar-inner.low { background: var(--fail); }
+
+  /* ── Bottom Panel ────────────────── */
+  .bottom-panel {
+    grid-column: 2; background: var(--card);
+    border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 16px; overflow-y: auto;
+  }
+  .result-banner {
+    display: flex; align-items: center; gap: 10px; padding: 12px 16px;
+    border-radius: 6px; margin-bottom: 12px; font-size: 15px;
+  }
+  .result-banner.all-pass { background: rgba(0,200,83,0.12); color: var(--pass); }
+  .result-banner.has-fail { background: rgba(255,23,68,0.12); color: var(--fail); }
+  .gallery { display: flex; flex-wrap: wrap; gap: 10px; }
+  .gallery img {
+    width: 200px; height: auto; max-height: 400px; object-fit: contain;
+    border-radius: 6px; border: 1px solid var(--border); cursor: pointer;
+    transition: transform 0.2s;
+  }
+  .gallery img:hover { transform: scale(1.03); }
+
+  .lightbox { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.85); z-index: 1000; align-items: center; justify-content: center; }
+  .lightbox.show { display: flex; }
+  .lightbox img { max-width: 90vw; max-height: 90vh; border-radius: 8px; }
+  .lightbox-close { position: absolute; top: 20px; right: 30px; font-size: 32px; color: #fff; cursor: pointer; }
+
+  .empty-state { color: var(--muted); text-align: center; padding: 40px 20px; font-size: 14px; }
+  .differences-list { color: var(--warn); font-size: 12px; margin-top: 4px; padding-left: 16px; }
+  .driver-badge {
+    display: inline-block; font-size: 10px; padding: 2px 6px; border-radius: 4px;
+    margin-left: 6px; font-weight: 600;
+  }
+  .driver-badge.web { background: rgba(15,157,88,0.2); color: var(--web); }
+  .driver-badge.app { background: rgba(91,141,239,0.2); color: var(--accent); }
+</style>
+</head>
+<body>
+
+<!-- Header -->
+<div class="header">
+  <h1>UI 自动化测试后台</h1>
+  <div>
+    <span class="status-dot idle" id="status-dot"></span>
+    <span id="status-text" style="font-size:13px;color:var(--muted)">就绪</span>
+  </div>
+</div>
+
+<!-- Left Panel -->
+<div class="left-panel">
+  <!-- APP / WEB Tabs -->
+  <div class="tabs">
+    <button class="tab-btn" id="tab-app" onclick="switchMode('app')">📱 APP</button>
+    <button class="tab-btn web active" id="tab-web" onclick="switchMode('web')">🌐 WEB</button>
+  </div>
+
+  <!-- WEB 配置 -->
+  <div id="config-web">
+    <div class="config-row">
+      <label style="margin-bottom:0">浏览器</label>
+      <select id="browser-select">
+        <option value="chromium">Chromium</option>
+        <option value="firefox">Firefox</option>
+        <option value="webkit">WebKit</option>
+      </select>
+      <input type="checkbox" id="headless-checkbox" checked style="margin-left:8px">
+      <label style="margin-bottom:0">无头模式</label>
+    </div>
+  </div>
+
+  <!-- APP 配置 -->
+  <div id="config-app" style="display:none">
+    <label>设备序列号</label>
+    <input id="serial-input" type="text" value="emulator-5554">
+  </div>
+
+  <div>
+    <div class="section-title">场景选择</div>
+    <label>测试场景</label>
+    <select id="scenario-select"><option value="">加载中...</option></select>
+  </div>
+
+  <div>
+    <label>AI 模型</label>
+    <select id="model-select">
+      <option value="claude-sonnet-4-6">Claude Sonnet 4.6</option>
+      <option value="claude-opus-4-7">Claude Opus 4.7</option>
+      <option value="claude-haiku-4-5">Claude Haiku 4.5</option>
+    </select>
+  </div>
+
+  <button class="btn-run" id="btn-run" onclick="startRun()">▶  运行测试</button>
+
+  <div style="margin-top:8px">
+    <div class="section-title">运行历史</div>
+    <ul class="history-list" id="history-list"><li class="empty-state">暂无记录</li></ul>
+  </div>
+</div>
+
+<!-- Right Panel: Step List -->
+<div class="right-panel" id="step-panel">
+  <div class="section-title" style="margin-bottom:10px">执行步骤</div>
+  <div id="step-list" class="empty-state">请选择场景并点击运行</div>
+</div>
+
+<!-- Bottom Panel: Results -->
+<div class="bottom-panel" id="result-panel">
+  <div class="section-title" style="margin-bottom:10px">执行结果</div>
+  <div id="result-area" class="empty-state">运行测试后在此显示结果</div>
+</div>
+
+<!-- Lightbox -->
+<div class="lightbox" id="lightbox" onclick="closeLightbox()">
+  <span class="lightbox-close">&times;</span>
+  <img id="lightbox-img" src="" alt="截图放大">
+</div>
+
+<script>
+// ── 全局状态 ──────────────────────────
+let ws = null;
+let currentRunId = null;
+let totalSteps = 0;
+let stepStates = [];
+let completedScreenshots = [];
+let currentMode = 'web';
+let allScenarios = [];
+
+// ── 初始化 ────────────────────────────
+window.addEventListener('DOMContentLoaded', () => {
+  loadScenarios();
+  loadHistory();
+  loadConfig();
+});
+
+async function loadConfig() {
+  try {
+    const r = await fetch('/api/config');
+    const cfg = await r.json();
+    document.getElementById('serial-input').value = cfg.serial || 'emulator-5554';
+    document.getElementById('model-select').value = cfg.model;
+    document.getElementById('browser-select').value = cfg.browser_type || 'chromium';
+    document.getElementById('headless-checkbox').checked = cfg.headless !== false;
+  } catch(e) { console.error('loadConfig', e); }
+}
+
+async function loadScenarios() {
+  try {
+    const r = await fetch('/api/scenarios');
+    allScenarios = await r.json();
+    filterScenarios();
+  } catch(e) {
+    document.getElementById('scenario-select').innerHTML = '<option value="">加载失败</option>';
+  }
+}
+
+function filterScenarios() {
+  const filtered = allScenarios.filter(s => s.driver_type === currentMode);
+  const sel = document.getElementById('scenario-select');
+  let html = filtered.length === 0
+    ? '<option value="">无可用场景</option>'
+    : filtered.map(s => `<option value="${s.id}">${s.name} (${s.step_count} 步)</option>`).join('');
+
+  // 添加其他模式的场景但标记灰色
+  const otherMode = allScenarios.filter(s => s.driver_type !== currentMode);
+  if (otherMode.length > 0) {
+    html += '<option disabled>── 其他模式场景 ──</option>';
+    html += otherMode.map(s => `<option disabled>${s.name} [${s.driver_type === 'web' ? 'WEB' : 'APP'}]</option>`).join('');
+  }
+  sel.innerHTML = html;
+}
+
+// ── Tab 切换 ──────────────────────────
+function switchMode(mode) {
+  currentMode = mode;
+  document.getElementById('tab-app').classList.toggle('active', mode === 'app');
+  document.getElementById('tab-web').classList.toggle('active', mode === 'web');
+  document.getElementById('config-web').style.display = mode === 'web' ? '' : 'none';
+  document.getElementById('config-app').style.display = mode === 'app' ? '' : 'none';
+  // 重置按钮
+  document.getElementById('btn-run').disabled = false;
+  document.getElementById('btn-run').textContent = '▶  运行测试';
+  filterScenarios();
+}
+
+// ── 历史 ──────────────────────────────
+async function loadHistory() {
+  try {
+    const r = await fetch('/api/runs');
+    const runs = await r.json();
+    const ul = document.getElementById('history-list');
+    if (runs.length === 0) {
+      ul.innerHTML = '<li class="empty-state">暂无记录</li>';
+      return;
+    }
+    ul.innerHTML = runs.slice(0, 20).map(r => `
+      <li>
+        <span onclick="viewHistory('${r.run_id}')" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;cursor:pointer">${r.test_name}</span>
+        <span style="font-size:11px;color:var(--muted);margin-right:6px;white-space:nowrap">${formatTime(r.finished_at)}</span>
+        <span class="${r.passed ? 'h-pass' : 'h-fail'}" style="cursor:pointer" onclick="viewHistory('${r.run_id}')">${r.passed ? 'PASS' : 'FAIL'}</span>
+        <button class="btn-del" title="删除记录" onclick="deleteRun(event, '${r.run_id}')">&times;</button>
+      </li>`).join('');
+  } catch(e) { console.error('loadHistory', e); }
+}
+
+// ── 运行测试 ──────────────────────────
+async function startRun() {
+  const scenarioId = document.getElementById('scenario-select').value;
+  if (!scenarioId) return alert('请选择测试场景');
+
+  const scenario = allScenarios.find(s => s.id === scenarioId);
+  if (!scenario) return alert('场景数据异常');
+
+  // 清空上一次的步骤列表和结果
+  document.getElementById('step-list').innerHTML = '<div class="empty-state">准备执行...</div>';
+  document.getElementById('result-area').innerHTML = '<div class="empty-state">运行中...</div>';
+  stepStates = [];
+  completedScreenshots = [];
+  totalSteps = 0;
+
+  const model = document.getElementById('model-select').value;
+  const btn = document.getElementById('btn-run');
+  btn.disabled = true;
+  btn.textContent = '⏳ 启动中...';
+
+  let body = { scenario_id: scenarioId, model };
+
+  if (currentMode === 'web') {
+    body.browser_type = document.getElementById('browser-select').value;
+    body.headless = document.getElementById('headless-checkbox').checked;
+  } else {
+    body.serial = document.getElementById('serial-input').value.trim();
+  }
+
+  try {
+    const r = await fetch('/api/run', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(body),
+    });
+    const data = await r.json();
+    if (r.status === 409) {
+      // 被拦截：后台可能有卡住的测试，尝试强制重置后重试
+      console.warn('测试被拦截，尝试强制重置...');
+      try {
+        await fetch('/api/force-reset', { method: 'POST' });
+        await new Promise(res => setTimeout(res, 800));  // 等待浏览器进程完全退出
+        const retryR = await fetch('/api/run', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify(body),
+        });
+        const retryData = await retryR.json();
+        if (!retryR.ok) {
+          alert(retryData.error || '重试仍然失败，请重启服务');
+          btn.disabled = false;
+          btn.textContent = '▶  运行测试';
+          return;
+        }
+        currentRunId = retryData.run_id;
+        connectWS(retryData.run_id);
+        return;
+      } catch (resetErr) {
+        alert('强制重置失败: ' + resetErr.message);
+        btn.disabled = false;
+        btn.textContent = '▶  运行测试';
+        return;
+      }
+    }
+    if (!r.ok) {
+      alert(data.error || '启动失败');
+      btn.disabled = false;
+      btn.textContent = '▶  运行测试';
+      return;
+    }
+    currentRunId = data.run_id;
+    connectWS(data.run_id);
+  } catch(e) {
+    alert('网络错误: ' + e.message);
+    btn.disabled = false;
+    btn.textContent = '▶  运行测试';
+  }
+}
+
+function connectWS(runId) {
+  setStatus('running', '运行中');
+  ws = new WebSocket(`ws://${location.host}/ws/run/${runId}`);
+  ws.onmessage = (ev) => {
+    const msg = JSON.parse(ev.data);
+    handleMessage(msg);
+  };
+  ws.onerror = () => {
+    setStatus('idle', '连接异常');
+    finishRun();
+  };
+  ws.onclose = () => {
+    if (currentRunId) { setStatus('idle', '就绪'); finishRun(); }
+  };
+}
+
+function handleMessage(msg) {
+  switch (msg.type) {
+    case 'log':
+      setStatus('running', msg.message.substring(0, 40));
+      break;
+    case 'run_starting':
+      // 运行一启动立即初始化步骤骨架，避免等第一步完成才看到列表
+      totalSteps = msg.total_steps || 0;
+      stepStates = new Array(totalSteps).fill('pending');
+      initStepList(totalSteps);
+      setStatus('running', `已启动 (${totalSteps} 步)`);
+      break;
+    case 'step_starting':
+      totalSteps = msg.total_steps;
+      if (stepStates.length === 0) initStepList(msg.total_steps);
+      stepStates[msg.step_index] = 'running';
+      // 如果已有 before 截图（在 Flow 模式下一次性推送时会携带），提前展示
+      if (msg.screenshot_before) {
+        const detailEl = document.getElementById(`step-detail-${msg.step_index}`);
+        if (detailEl) {
+          const cleanBefore = msg.screenshot_before.replace(/\\/g, '/');
+          detailEl.innerHTML = `
+            <div class="step-shots">
+              <div class="step-shot">
+                <span class="step-shot-label">执行前</span>
+                <img src="/screenshots/${cleanBefore}" onclick="event.stopPropagation(); showLightbox(this.src)" loading="lazy">
+              </div>
+            </div>`;
+        }
+      }
+      renderSteps();
+      break;
+    case 'step_completed':
+      stepStates[msg.step_index] = msg.result.passed ? 'pass' : 'fail';
+      // 采集所有阶段截图到画廊
+      if (msg.result.screenshot_before) completedScreenshots.push(msg.result.screenshot_before);
+      if (msg.result.screenshot_after) completedScreenshots.push(msg.result.screenshot_after);
+      else if (msg.result.screenshot && !msg.result.screenshot_before) completedScreenshots.push(msg.result.screenshot);
+
+      const detailEl = document.getElementById(`step-detail-${msg.step_index}`);
+      if (detailEl) {
+        const cls = msg.result.confidence >= 0.7 ? 'high' : msg.result.confidence >= 0.4 ? 'med' : 'low';
+        const before = msg.result.screenshot_before ? msg.result.screenshot_before.replace(/\\/g, '/') : '';
+        const after = msg.result.screenshot_after ? msg.result.screenshot_after.replace(/\\/g, '/') : '';
+        const fallback = (!before && !after && msg.result.screenshot) ? msg.result.screenshot.replace(/\\/g, '/') : '';
+        const shotsHtml = `
+          <div class="step-shots">
+            ${before ? `<div class="step-shot"><span class="step-shot-label">执行前</span><img src="/screenshots/${before}" onclick="event.stopPropagation(); showLightbox(this.src)" loading="lazy"></div>` : ''}
+            ${after ? `<div class="step-shot"><span class="step-shot-label">执行后</span><img src="/screenshots/${after}" onclick="event.stopPropagation(); showLightbox(this.src)" loading="lazy"></div>` : ''}
+            ${fallback ? `<div class="step-shot"><span class="step-shot-label">截图</span><img src="/screenshots/${fallback}" onclick="event.stopPropagation(); showLightbox(this.src)" loading="lazy"></div>` : ''}
+          </div>`;
+        detailEl.innerHTML = `
+          <div>${msg.result.summary}</div>
+          <div class="confidence-bar"><div class="confidence-bar-inner ${cls}" style="width:${(msg.result.confidence*100)|0}%"></div></div>
+          <div style="font-size:11px;color:var(--muted)">置信度: ${(msg.result.confidence*100)|0}% | 耗时: ${(msg.result.duration_ms/1000)|0}s</div>
+          ${msg.result.differences && msg.result.differences.length ? '<ul class="differences-list">'+msg.result.differences.map(d=>`<li>${d}</li>`).join('')+'</ul>' : ''}
+          ${shotsHtml}
+        `;
+      }
+      renderSteps();
+      break;
+    case 'run_completed':
+      renderResults(msg.report);
+      setStatus('idle', msg.report.passed ? '通过' : '失败');
+      currentRunId = null;
+      finishRun();
+      loadHistory();
+      break;
+    case 'run_error':
+      setStatus('idle', '错误');
+      document.getElementById('result-area').innerHTML = `
+        <div class="result-banner has-fail">❌ 运行异常: ${msg.error}</div>`;
+      currentRunId = null;
+      finishRun();
+      break;
+  }
+}
+
+function initStepList(total) {
+  const el = document.getElementById('step-list');
+  el.innerHTML = Array.from({length: total}, (_, i) => `
+    <div class="step-item pending" id="step-row-${i}">
+      <div class="step-icon">${i+1}</div>
+      <div class="step-info">
+        <div class="step-name" id="step-name-${i}">步骤 ${i+1}</div>
+        <div class="step-meta" id="step-meta-${i}">等待执行</div>
+        <div class="step-detail" id="step-detail-${i}"></div>
+      </div>
+    </div>`).join('');
+}
+
+function renderSteps() {
+  for (let i = 0; i < totalSteps; i++) {
+    const row = document.getElementById('step-row-'+i);
+    if (!row) continue;
+    const state = stepStates[i] || 'pending';
+    row.className = `step-item ${state}`;
+    const meta = document.getElementById('step-meta-'+i);
+    if (state === 'running') meta.textContent = '执行中...';
+    else if (state === 'pass') meta.textContent = '通过';
+    else if (state === 'fail') meta.textContent = '失败';
+  }
+}
+
+function renderResults(report) {
+  const passed = report.passed;
+  const dur = (report.total_duration_ms / 1000).toFixed(1);
+  const stepsHtml = report.steps.map((s,i) => {
+    const icon = s.passed ? '✅' : '❌';
+    return `<div style="font-size:13px;margin:2px 0">${icon} 步骤 ${i+1}: ${s.step_name} (${(s.confidence*100)|0}%)</div>`;
+  }).join('');
+
+  const screenshotsHtml = completedScreenshots.map(path => {
+    const clean = path.replace(/\\/g, '/');
+    return `<img src="/screenshots/${clean}" onclick="showLightbox(this.src)" loading="lazy" title="${clean.split('/').pop()}">`;
+  }).join('');
+
+  document.getElementById('result-area').innerHTML = `
+    <div class="result-banner ${passed ? 'all-pass' : 'has-fail'}">
+      ${passed ? '全部通过' : '存在失败'} &nbsp; 总耗时: ${dur}s
+    </div>
+    <div style="margin-bottom:8px">${stepsHtml}</div>
+    ${screenshotsHtml ? '<div class="section-title" style="margin:10px 0 6px">执行截图</div><div class="gallery">'+screenshotsHtml+'</div>' : ''}
+  `;
+}
+
+async function viewHistory(runId) {
+  try {
+    const r = await fetch(`/api/runs/${runId}`);
+    if (!r.ok) return;
+    const report = await r.json();
+    document.getElementById('step-list').innerHTML = report.steps.map((s, i) => {
+      const before = s.screenshot_before ? s.screenshot_before.replace(/\\/g, '/') : '';
+      const after = s.screenshot_after ? s.screenshot_after.replace(/\\/g, '/') : '';
+      const fallback = (!before && !after && s.screenshot) ? s.screenshot.replace(/\\/g, '/') : '';
+      const shotsHtml = `
+        <div class="step-shots">
+          ${before ? `<div class="step-shot"><span class="step-shot-label">执行前</span><img src="/screenshots/${before}" onclick="event.stopPropagation();showLightbox(this.src)" loading="lazy"></div>` : ''}
+          ${after ? `<div class="step-shot"><span class="step-shot-label">执行后</span><img src="/screenshots/${after}" onclick="event.stopPropagation();showLightbox(this.src)" loading="lazy"></div>` : ''}
+          ${fallback ? `<div class="step-shot"><span class="step-shot-label">截图</span><img src="/screenshots/${fallback}" onclick="event.stopPropagation();showLightbox(this.src)" loading="lazy"></div>` : ''}
+        </div>`;
+      return `
+      <div class="step-item ${s.passed ? 'pass' : 'fail'}">
+        <div class="step-icon">${s.passed ? 'V' : 'X'}</div>
+        <div class="step-info">
+          <div class="step-name">${s.step_name}</div>
+          <div class="step-meta">${s.summary} | ${(s.confidence*100)|0}% | ${(s.duration_ms/1000)|0}s</div>
+          ${shotsHtml}
+        </div>
+      </div>`;
+    }).join('');
+
+    completedScreenshots = [];
+    report.steps.forEach(s => {
+      if (s.screenshot_before) completedScreenshots.push(s.screenshot_before);
+      if (s.screenshot_after) completedScreenshots.push(s.screenshot_after);
+      else if (s.screenshot && !s.screenshot_before) completedScreenshots.push(s.screenshot);
+    });
+    renderResults(report);
+  } catch(e) { console.error('viewHistory', e); }
+}
+
+function formatDuration(ms) {
+  if (!ms || ms <= 0) return '-';
+  if (ms < 1000) return (ms|0) + 'ms';
+  if (ms < 60000) return (ms/1000).toFixed(1) + 's';
+  return (ms/60000|0) + 'm ' + ((ms%60000)/1000|0) + 's';
+}
+
+function formatTime(isoStr) {
+  if (!isoStr) return '-';
+  try {
+    const d = new Date(isoStr);
+    const pad = n => String(n).padStart(2, '0');
+    return `${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  } catch { return '-'; }
+}
+
+async function deleteRun(ev, runId) {
+  ev.stopPropagation();
+  if (!confirm(`确认删除运行记录 "${runId}" 及关联截图？`)) return;
+  try {
+    const r = await fetch(`/api/runs/${runId}`, { method: 'DELETE' });
+    if (!r.ok) { const data = await r.json(); alert(data.error || '删除失败'); return; }
+    loadHistory();
+    // 如果当前展示的就是被删除的记录，清空展示
+    document.getElementById('step-list').innerHTML = '<div class="empty-state">请选择场景并点击运行</div>';
+    document.getElementById('result-area').innerHTML = '<div class="empty-state">运行测试后在此显示结果</div>';
+  } catch(e) { alert('删除失败: ' + e.message); }
+}
+
+function setStatus(state, text) {
+  document.getElementById('status-dot').className = `status-dot ${state}`;
+  document.getElementById('status-text').textContent = text;
+}
+
+function finishRun() {
+  const btn = document.getElementById('btn-run');
+  btn.disabled = false;
+  btn.textContent = '▶  运行测试';
+  stepStates = [];
+  completedScreenshots = [];
+  totalSteps = 0;
+}
+
+function showLightbox(src) {
+  document.getElementById('lightbox-img').src = src;
+  document.getElementById('lightbox').classList.add('show');
+}
+
+function closeLightbox() {
+  document.getElementById('lightbox').classList.remove('show');
+}
+</script>
+</body>
+</html>

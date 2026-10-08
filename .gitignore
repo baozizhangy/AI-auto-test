@@ -1,0 +1,24 @@
+# Virtual environment
+.venv/
+venv/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+
+# Environment / secrets
+.env
+
+# Test artifacts (auto-generated)
+screenshots/*
+!screenshots/.gitkeep
+reports/*
+!reports/.gitkeep
+baselines/*
+!baselines/.gitkeep
+
+# IDE / editor / agent
+.idea/
+.vscode/
+.claude/
